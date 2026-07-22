@@ -191,7 +191,19 @@ class Handler(BaseHTTPRequestHandler):
                 return
             try:
                 from langchain_core.messages import HumanMessage
+                from agent.optimizer import cache_get, cache_set, record_call
+
+                # 缓存检查
+                cached = cache_get(user_msg)
+                if cached:
+                    self._json({"reply": cached, "tool_calls": [], "cached": True})
+                    return
+
+                # 计时
+                t0 = __import__('time').time()
                 result = agent.invoke({"messages": [HumanMessage(content=user_msg)]})
+                elapsed = (__import__('time').time() - t0) * 1000
+
                 reply = ""
                 tool_calls = []
                 for msg in result.get("messages", []):
@@ -200,6 +212,12 @@ class Handler(BaseHTTPRequestHandler):
                             reply = msg.content
                         if msg.type == "tool":
                             tool_calls.append(getattr(msg, "name", "unknown"))
+                # 记录性能
+                record_call(user_msg, reply or "", elapsed)
+                # 缓存结果
+                if reply and len(reply) > 10:
+                    cache_set(user_msg, reply)
+
                 self._json({"reply": reply or "done", "tool_calls": tool_calls})
             except Exception as e:
                 self._json({"error": str(e)})
