@@ -1,0 +1,1 @@
+[{"time": "2026-07-22 15:43:35", "user_id": "user_001", "amount": 12000.0, "risk_score": 23, "risk_level": "low", "action": "pass", "reasons": ["大额交易(>10000)", "较高频率(>5次)", "多设备(3个)", "深夜交易", "新用户"]}, {"time": "2026-07-22 15:43:35", "user_id": "user_002", "amount": 200.0, "risk_score": 0, "risk_level": "low", "action": "pass", "reasons": []}]

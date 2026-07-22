@@ -124,13 +124,17 @@ web_search = _create_search_tool()
 # ============================================================
 def get_all_tools():
     """返回所有可用工具"""
-    from agent.rag_tool import get_rag_tools, get_rag_status
+    from agent.rag_tool import get_rag_tools
     from agent.sql_tools import get_sql_tools
     from agent.optimizer import get_optimizer_tools
-    rag_tools = get_rag_tools()
-    sql_tools = get_sql_tools()
-    opt_tools = get_optimizer_tools()
-    return [calculator, current_time, read_file, write_file, web_search] + rag_tools + sql_tools + opt_tools
+    from agent.risk_control import get_risk_tools
+    return (
+        [calculator, current_time, read_file, write_file, web_search]
+        + get_rag_tools()
+        + get_sql_tools()
+        + get_optimizer_tools()
+        + get_risk_tools()
+    )
 
 
 def get_rag_status_text():
