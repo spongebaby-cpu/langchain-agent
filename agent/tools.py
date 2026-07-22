@@ -124,4 +124,15 @@ web_search = _create_search_tool()
 # ============================================================
 def get_all_tools():
     """返回所有可用工具"""
-    return [calculator, current_time, read_file, write_file, web_search]
+    from agent.rag_tool import get_rag_tools, get_rag_status
+    rag_tools = get_rag_tools()
+    return [calculator, current_time, read_file, write_file, web_search] + rag_tools
+
+
+def get_rag_status_text():
+    """获取 RAG 知识库状态"""
+    try:
+        from agent.rag_tool import get_rag_status
+        return get_rag_status()
+    except Exception:
+        return "RAG: 未初始化"

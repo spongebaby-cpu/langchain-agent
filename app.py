@@ -1,21 +1,19 @@
 #!/usr/bin/env python3
-"""AI 智能助手 — Web 版（纯 Python 标准库，零额外依赖）"""
+"""AI Assistant with RAG - Web Interface"""
 
-import json
-import sys
-import os
-import webbrowser
+import json, sys, os, webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ---- 代理（Clash Verge，解决 DeepSeek 连接问题）----
+# ---- Proxy ----
 _proxy = os.environ.get("HTTP_PROXY", "http://127.0.0.1:7890")
 os.environ["http_proxy"] = os.environ["https_proxy"] = _proxy
 os.environ["HTTP_PROXY"] = os.environ["HTTPS_PROXY"] = _proxy
 
-# ---- 加载 Agent ----
+# ---- Load Agent ----
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils.config import get_config
 from agent.core import create_agent
+from agent.rag_tool import rag_add_document, get_rag_status
 
 HOST = "0.0.0.0"
 PORT = 7860
@@ -26,65 +24,69 @@ agent, tools = create_agent(config)
 tool_names = [t.name for t in tools]
 print(f"Agent ready | Model: {config['DEEPSEEK_MODEL']} | Tools: {', '.join(tool_names)}")
 
-# ---- HTML 页面 ----
 HTML = r"""<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>🤖 AI 智能助手</title>
+<title>AI Assistant with RAG</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#1a1a2e;color:#eee;height:100vh;display:flex;flex-direction:column}
-.header{background:#16213e;padding:16px 24px;text-align:center;border-bottom:1px solid #0f3460}
-.header h1{font-size:22px;color:#e94560}
-.header p{font-size:12px;color:#888;margin-top:4px}
-.chat{flex:1;overflow-y:auto;padding:20px 24px;display:flex;flex-direction:column;gap:16px}
-.msg{max-width:80%;padding:12px 16px;border-radius:12px;line-height:1.6;white-space:pre-wrap;word-break:break-word;font-size:14px}
+.header{background:#16213e;padding:12px 24px;text-align:center;border-bottom:1px solid #0f3460}
+.header h1{font-size:20px;color:#e94560}
+.header p{font-size:11px;color:#888;margin-top:2px}
+.chat{flex:1;overflow-y:auto;padding:16px 24px;display:flex;flex-direction:column;gap:14px}
+.msg{max-width:82%;padding:10px 14px;border-radius:12px;line-height:1.5;white-space:pre-wrap;word-break:break-word;font-size:13px}
 .msg.user{align-self:flex-end;background:#e94560;color:#fff}
 .msg.assistant{align-self:flex-start;background:#0f3460;color:#eee}
-.msg .label{font-size:11px;opacity:0.6;margin-bottom:4px}
-.tools{display:flex;gap:6px;flex-wrap:wrap;padding:8px 24px}
-.tool-tag{font-size:11px;padding:3px 10px;border-radius:10px;background:#0f3460;color:#a0c4ff}
-.input-area{display:flex;gap:10px;padding:16px 24px;border-top:1px solid #0f3460;background:#16213e}
-.input-area textarea{flex:1;padding:12px;border-radius:8px;border:1px solid #0f3460;background:#1a1a2e;color:#eee;font-size:14px;resize:none;height:48px;font-family:inherit}
-.input-area button{padding:12px 24px;border:none;border-radius:8px;background:#e94560;color:#fff;font-size:14px;cursor:pointer;font-weight:bold}
+.msg .label{font-size:10px;opacity:0.6;margin-bottom:3px}
+.tools{display:flex;gap:5px;flex-wrap:wrap;padding:6px 24px}
+.tool-tag{font-size:10px;padding:2px 8px;border-radius:8px;background:#0f3460;color:#a0c4ff}
+.rag-bar{display:flex;gap:8px;padding:8px 24px;background:#0d1b36;align-items:center;border-top:1px solid #0f3460}
+.rag-bar input{flex:1;padding:6px 10px;border-radius:6px;border:1px solid #0f3460;background:#1a1a2e;color:#eee;font-size:12px}
+.rag-bar button{padding:6px 14px;border:none;border-radius:6px;background:#2563eb;color:#fff;font-size:12px;cursor:pointer;white-space:nowrap}
+.rag-bar button:hover{opacity:0.85}
+.rag-status{font-size:10px;color:#888;padding:0 24px 4px}
+.input-area{display:flex;gap:10px;padding:12px 24px;border-top:1px solid #0f3460;background:#16213e}
+.input-area textarea{flex:1;padding:10px;border-radius:8px;border:1px solid #0f3460;background:#1a1a2e;color:#eee;font-size:13px;resize:none;height:44px;font-family:inherit}
+.input-area button{padding:10px 20px;border:none;border-radius:8px;background:#e94560;color:#fff;font-size:13px;cursor:pointer;font-weight:bold}
 .input-area button:hover{background:#ff6b81}
 .input-area button:disabled{opacity:0.5;cursor:not-allowed}
-.thinking{color:#e94560;font-size:13px;padding:8px 0}
-.tool-call{font-size:12px;color:#a0c4ff;padding:4px 12px;margin:4px 0;border-left:2px solid #e94560}
+.thinking{color:#e94560;font-size:12px;padding:6px 0}
+.tool-call{font-size:11px;color:#a0c4ff;padding:3px 10px;margin:3px 0;border-left:2px solid #e94560}
 @media(max-width:600px){.msg{max-width:90%}.input-area{flex-direction:column}}
 </style>
 </head>
 <body>
-
 <div class="header">
-  <h1>🤖 AI 智能助手</h1>
-  <p>支持对话、计算、文件处理、联网搜索</p>
+  <h1>AI Assistant with RAG</h1>
+  <p>Chat | Calculator | File I/O | Search | RAG Knowledge Base</p>
 </div>
-
 <div class="tools" id="tools"></div>
-
+<div class="rag-status" id="ragStatus">RAG: loading...</div>
+<div class="rag-bar">
+  <input id="filepath" placeholder="Document path to add to knowledge base (e.g. C:\docs\manual.txt)">
+  <button onclick="uploadDoc()">+ Add to KB</button>
+</div>
 <div class="chat" id="chat">
   <div class="msg assistant">
-    <div class="label">🤖 助手</div>
-    你好！我是 AI 智能助手，有什么可以帮你的？
+    <div class="label">Assistant</div>
+    Hello! I can search documents you upload to the knowledge base. Try adding a file then ask me about its contents.
   </div>
 </div>
-
 <div class="input-area">
-  <textarea id="input" placeholder="输入问题，按 Enter 发送（Shift+Enter 换行）..." rows="1"></textarea>
-  <button id="sendBtn" onclick="send()">发送</button>
+  <textarea id="input" placeholder="Ask anything... (Enter to send)" rows="1"></textarea>
+  <button id="sendBtn" onclick="send()">Send</button>
 </div>
-
 <script>
-const tools = TOOL_LIST;
-document.getElementById('tools').innerHTML = tools.map(t => '<span class="tool-tag">🔧 ' + t + '</span>').join('');
+var tools = TOOL_LIST;
+document.getElementById('tools').innerHTML = tools.map(function(t){return '<span class="tool-tag">'+t+'</span>'}).join('');
+loadRagStatus();
 
-const chat = document.getElementById('chat');
-const input = document.getElementById('input');
-const sendBtn = document.getElementById('sendBtn');
-
+var chat = document.getElementById('chat');
+var input = document.getElementById('input');
+var sendBtn = document.getElementById('sendBtn');
 input.addEventListener('keydown', function(e) {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
@@ -92,14 +94,11 @@ input.addEventListener('keydown', function(e) {
 async function send() {
   var text = input.value.trim();
   if (!text) return;
-
-  appendMsg('user', '👤 你', text);
+  appendMsg('user', 'You', text);
   input.value = '';
   sendBtn.disabled = true;
-
-  var thinkDiv = appendMsg('assistant', '🤖 助手', '思考中...');
+  var thinkDiv = appendMsg('assistant', 'Assistant', 'Thinking...');
   thinkDiv.classList.add('thinking');
-
   try {
     var resp = await fetch('/api/chat', {
       method: 'POST',
@@ -108,27 +107,47 @@ async function send() {
     });
     var data = await resp.json();
     thinkDiv.remove();
-
     if (data.error) {
-      appendMsg('assistant', '🤖 助手', '❌ ' + data.error);
+      appendMsg('assistant', 'Assistant', 'Error: ' + data.error);
     } else {
       if (data.tool_calls && data.tool_calls.length > 0) {
         data.tool_calls.forEach(function(tc) {
           var tcDiv = document.createElement('div');
           tcDiv.className = 'tool-call';
-          tcDiv.textContent = '🔧 调用工具: ' + tc;
+          tcDiv.textContent = '>> Tool: ' + tc;
           chat.appendChild(tcDiv);
         });
       }
-      appendMsg('assistant', '🤖 助手', data.reply || '(无回复)');
+      appendMsg('assistant', 'Assistant', data.reply || '(no response)');
     }
   } catch (e) {
     thinkDiv.remove();
-    appendMsg('assistant', '🤖 助手', '❌ 网络错误: ' + e.message);
+    appendMsg('assistant', 'Assistant', 'Network error: ' + e.message);
   }
-
   sendBtn.disabled = false;
   chat.scrollTop = chat.scrollHeight;
+}
+
+async function uploadDoc() {
+  var fp = document.getElementById('filepath').value.trim();
+  if (!fp) return;
+  var resp = await fetch('/api/upload', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({filepath: fp})
+  });
+  var data = await resp.json();
+  appendMsg('assistant', 'System', data.result || data.error);
+  loadRagStatus();
+  document.getElementById('filepath').value = '';
+}
+
+async function loadRagStatus() {
+  try {
+    var resp = await fetch('/api/rag_status');
+    var data = await resp.json();
+    document.getElementById('ragStatus').textContent = data.status || 'RAG: -';
+  } catch(e) {}
 }
 
 function appendMsg(role, label, content) {
@@ -139,7 +158,6 @@ function appendMsg(role, label, content) {
   chat.scrollTop = chat.scrollHeight;
   return div;
 }
-
 function escapeHtml(text) {
   var div = document.createElement('div');
   div.textContent = text;
@@ -152,8 +170,6 @@ function escapeHtml(text) {
 
 
 class Handler(BaseHTTPRequestHandler):
-    """HTTP 请求处理"""
-
     def do_GET(self):
         if self.path in ("/", "/index.html"):
             content = HTML.encode("utf-8")
@@ -168,18 +184,14 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/chat":
             length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length)
-            data = json.loads(body)
+            data = json.loads(self.rfile.read(length))
             user_msg = data.get("message", "").strip()
-
             if not user_msg:
-                self._json({"error": "消息为空"})
+                self._json({"error": "empty message"})
                 return
-
             try:
                 from langchain_core.messages import HumanMessage
                 result = agent.invoke({"messages": [HumanMessage(content=user_msg)]})
-
                 reply = ""
                 tool_calls = []
                 for msg in result.get("messages", []):
@@ -188,11 +200,22 @@ class Handler(BaseHTTPRequestHandler):
                             reply = msg.content
                         if msg.type == "tool":
                             tool_calls.append(getattr(msg, "name", "unknown"))
-
-                self._json({"reply": reply or "处理完成", "tool_calls": tool_calls})
-
+                self._json({"reply": reply or "done", "tool_calls": tool_calls})
             except Exception as e:
                 self._json({"error": str(e)})
+
+        elif self.path == "/api/upload":
+            data = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+            filepath = data.get("filepath", "").strip()
+            if filepath:
+                result = rag_add_document.invoke({"filepath": filepath})
+                self._json({"result": result, "rag_status": get_rag_status()})
+            else:
+                self._json({"error": "no filepath"})
+
+        elif self.path == "/api/rag_status":
+            self._json({"status": get_rag_status()})
+
         else:
             self.send_error(404)
 
@@ -205,7 +228,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def log_message(self, format, *args):
-        pass  # 精简日志
+        pass
 
 
 if __name__ == "__main__":
@@ -216,7 +239,6 @@ if __name__ == "__main__":
     print(f"  LAN: http://<your-ip>:{PORT}")
     print(f"  Ctrl+C to stop")
     print(f"{'='*50}\n")
-
     webbrowser.open(url)
     try:
         server.serve_forever()
