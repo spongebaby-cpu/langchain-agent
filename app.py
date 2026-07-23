@@ -17,7 +17,7 @@ from agent.core import create_agent
 from agent.rag_tool import rag_add_document, get_rag_status
 
 HOST = "0.0.0.0"
-PORT = 7860
+PORT = int(os.environ.get("PORT", 7860))
 
 print("Loading Agent...")
 config = get_config()
