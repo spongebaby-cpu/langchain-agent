@@ -4,10 +4,11 @@
 import json, sys, os, webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-# ---- Proxy ----
-_proxy = os.environ.get("HTTP_PROXY", "http://127.0.0.1:7890")
-os.environ["http_proxy"] = os.environ["https_proxy"] = _proxy
-os.environ["HTTP_PROXY"] = os.environ["HTTPS_PROXY"] = _proxy
+# ---- Proxy (only on local Windows, skip on cloud) ----
+if os.environ.get("SKIP_PROXY", "").lower() != "true":
+    _proxy = os.environ.get("HTTP_PROXY", "http://127.0.0.1:7890")
+    os.environ["http_proxy"] = os.environ["https_proxy"] = _proxy
+    os.environ["HTTP_PROXY"] = os.environ["HTTPS_PROXY"] = _proxy
 
 # ---- Load Agent ----
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
